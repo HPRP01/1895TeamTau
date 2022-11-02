@@ -10,29 +10,35 @@
 #include <Adafruit_MPU6050.h> //GYRO
 #include <Adafruit_Sensor.h>  //GYRO
 
-// Define OLED Width and Height
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-
 // Define I/O pins
 #define START_BUTTON 9
 #define ACTION_BUTTON 8
 #define PHOTORESISTOR A0
 #define SPEAKER 10
+
 #define LEDPIN 7
+#define LEDPIN_FAIL 6
+
+#define COVER_IT_CUTOFF 200
 
 // Define I2C Addresses
 #define DISPLAY_I2C 0x3C
-#define GYRO_I2C 0x68
 
 // Instantiate OLED Display
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 // Instantiate Gyro
 Adafruit_MPU6050 mpu;
 
 void setup() {
   Serial.begin(9600);
+
+  if (!mpu.begin()) {
+    digitalWrite(LEDPIN, HIGH);
+    while (1) {
+      delay(10);
+    }
+  }
   
   // OLED
     // Connect SCL to pin 26 (1st on right)
@@ -57,7 +63,6 @@ void setup() {
   // Rotation Sensor
     // Connect SCL to pin 26 (1st on right)
     // Connect SDA to pin 27 (2nd on right)
-    mpu.begin(); 
 
   // Speaker
     // Connect speaker to pin D10 (pin 16 2nd from bottom right)
@@ -65,40 +70,69 @@ void setup() {
   // LED for Start
     // Connect LED to pin D7 (pin 13 2nd from bottom left)
     pinMode(LEDPIN, OUTPUT);
+    pinMode(LEDPIN_FAIL, OUTPUT);
 }
 
 void loop() {
-  int  turnTime    = 1000;
+  display.clearDisplay();
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  
+  int  turnTime    = 2000;
   bool playingGame = false;
   
   bool gameStarted = digitalRead(START_BUTTON);
 
   if(gameStarted == 1)
   {
-    display.clearDisplay();
     bool playingGame = true;
     int  score       = 0;
+    display.setTextColor(WHITE);
+    display.setTextSize(2);
+    display.setCursor(0,0);
+    digitalWrite(LEDPIN_FAIL, LOW);
+    digitalWrite(LEDPIN, LOW);
+    delay(1000);
   
     while(playingGame == true)
     {
       bool actionCompleted = false;
       int  action          = random(1,4);
+      sensors_event_t a, g, temp;
+      display.clearDisplay();
+      display.setCursor(0,0);
+      
 
       if(action == 1) {
-        // Play Tone 1
-        display.println("Push It");
+        display.println(F("Push It"));
         display.println(score);
         display.display();
+        
+        tone(10, 523, 500);
+        delay(500);
+        tone(10, 1047, 500);
+        delay(500);
+        noTone(10);
       } else if(action == 2) {
         // Play Tone 2
-        display.println("Cover It");
+        display.println(F("Cover It"));
         display.println(score);
         display.display();
+        
+        tone(10, 523, 500);
+        delay(500);
+        tone(10, 523, 500);
+        delay(500);
+        noTone(10);
       } else {
-        // Play Tone 3
-        display.println("Spin It");
+        display.println(F("Spin It"));
         display.println(score);
         display.display();
+        
+        tone(10, 523, 500);
+        delay(500);
+        tone(10, 262, 500);
+        delay(500);
+        noTone(10);
       }
 
       int startTime   = millis();
@@ -112,34 +146,113 @@ void loop() {
           // PUSH IT
           bool pushedIt = digitalRead(ACTION_BUTTON);
 
+          if(analogRead(PHOTORESISTOR) < COVER_IT_CUTOFF)
+          {
+            actionCompleted = false;
+            break;
+          }
+
+          mpu.getEvent(&a, &g, &temp);
+          if(a.acceleration.x > 2)
+          {
+            actionCompleted = false;
+            break;
+            
+          }
+
           if(pushedIt == 1)
           {
             actionCompleted = true;
-            delay(200);
             break;
           }
         }
         else if(action == 2)
         {
           // COVER IT
+          bool pushedIt = digitalRead(ACTION_BUTTON);
+          if(pushedIt == 1)
+          {
+            actionCompleted = false;
+            break;
+          }
+
+          mpu.getEvent(&a, &g, &temp);
+          if(a.acceleration.x > 2)
+          {
+            actionCompleted = false;
+            break;
+            
+          }
+          
+          if(analogRead(PHOTORESISTOR) < COVER_IT_CUTOFF)
+          {
+            actionCompleted = true;
+            break;
+          }
         }
         else if(action == 3)
         {
+          if(analogRead(PHOTORESISTOR) < COVER_IT_CUTOFF)
+          {
+            actionCompleted = false;
+            break;
+          }
+
+          bool pushedIt = digitalRead(ACTION_BUTTON);
+          if(pushedIt == 1)
+          {
+            actionCompleted = false;
+            break;
+          }
+          
+          mpu.getEvent(&a, &g, &temp);
+          if(a.acceleration.x > 2)
+          {
+            actionCompleted = true;
+            break;
+            
+          }
           // SPIN IT
+          
         }
       }
       
       if(actionCompleted == false)
       {
         // GAME OVER
-        display.println("GAME OVER");
-        display.println("Final Score: ");
+        display.clearDisplay();
+        display.setCursor(0,0);
+        display.println(F("GAME OVER"));
+        display.println("Score: ");
         display.println(score);
         display.display();
+        digitalWrite(LEDPIN_FAIL, HIGH);
+        break;
       }
 
       score    = score + 1;
-      turnTime = turnTime - 50;
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.println("");
+      display.println(score);
+      display.display();
+      digitalWrite(LEDPIN, HIGH);
+      delay(turnTime - elapsedTime);
+      digitalWrite(LEDPIN, LOW);
+
+      if(score == 5)
+      {
+        digitalWrite(LEDPIN, HIGH);
+        digitalWrite(LEDPIN_FAIL, HIGH);
+        display.clearDisplay();
+        display.setCursor(0,0);
+        display.println("You Win!");
+        display.println(score);
+        display.display();
+        break;
+      }
+      
+      turnTime = turnTime - 10;
     } //End While 
   } //End If gameStarted
 }
