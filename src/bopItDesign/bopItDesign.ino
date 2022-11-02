@@ -240,7 +240,7 @@ void loop() {
       delay(turnTime - elapsedTime);
       digitalWrite(LEDPIN, LOW);
 
-      if(score == 5)
+      if(score == 99)
       {
         digitalWrite(LEDPIN, HIGH);
         digitalWrite(LEDPIN_FAIL, HIGH);
