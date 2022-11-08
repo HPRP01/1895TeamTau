@@ -298,7 +298,7 @@ void loop() {
         display.println(score);
         display.display();
 
-        // Break out of game loop
+        // Break out of game loop 
         break;
       }
     } //End While 
